@@ -164,14 +164,14 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s, const vec
 }
 
 //Detect if there are no cars on either side-0, a car on the left-1, right-2, or on both sides-3
-int detect_barrier(const vector<vector<double>> &sensor_fusion, int lane, double car_s)
+int detect_barrier(const vector<vector<double>> &sensor_fusion, int lane, double car_s, double time_pred)
 {
 	bool detect_left = false;
 	bool detect_right = false;
-	double gap_left = 99;
-	double gap_right = 99; 
-	double gap_rear = 40;
-	double gap_front = 60-10;
+	double gap_rear = 30;
+	double gap_front = 50;
+	double lane_center = 2+4*lane; 
+	double lane_buffer = 0.5;
 	for (int i = 0; i < sensor_fusion.size(); i++)
 	{
 		double vx = sensor_fusion[i][3];
@@ -181,26 +181,20 @@ int detect_barrier(const vector<vector<double>> &sensor_fusion, int lane, double
 		double check_car_d = sensor_fusion[i][6];
 		
 		
-		if(check_car_d < (2+4*(lane-1)+2) && check_car_d > (2+4*(lane-1)-2)) //check the lane to the left
+		if((check_car_d < (2+4*(lane-1)+2) ) && check_car_d > (2+4*(lane-1)-2)) //check the lane to the left
 		{
 			
-			//std::cout << "Checking Left d: "  << check_car_d << std::endl;
-			//std::cout << "Checking Left s: "  << check_car_s << std::endl;
-			//std::cout << "My s: "  << end_path_s << std::endl;
+			//std::cout << "carid: " << sensor_fusion[i][0] << "ccs: " << check_car_s-car_s << std::endl;
 			if((check_car_s < (car_s + gap_front)) && (check_car_s > (car_s - gap_rear)))
 			{
 				detect_left = true;
-				
-				gap_left = check_car_s - car_s;
 			}
 		}
-		if(check_car_d < (2+4*(lane+1)+2) && check_car_d > (2+4*(lane+1)-2)) //check the lane to the right
+		if((check_car_d < (2+4*(lane+1)+2) ) && check_car_d > (2+4*(lane+1)-2))  //check the lane to the right
 		{
 			if((check_car_s < (car_s + gap_front)) && (check_car_s > (car_s - gap_rear)))
 			{
 				detect_right = true;
-				std::cout << "Car ID: " << sensor_fusion[i][0] <<" Gap: " << check_car_s - car_s << std::endl;
-				gap_right = check_car_s - car_s;
 			}
 		}
 	}
@@ -211,19 +205,19 @@ int detect_barrier(const vector<vector<double>> &sensor_fusion, int lane, double
 	//std::cout << "Left detect: " << detect_left << " Right detect: " << detect_right << " Gap left: " <<  gap_left << " Gap Right: " << gap_right << std::endl;
 	if (detect_left && detect_right)
 	{
-		return 3;
+		return 3;  //cars on both sides
 	}
 	else if (detect_left  && !detect_right)
 	{
-		return 1;
+		return 1; //car on left 
 	}
 	else if (!detect_left  && detect_right)
 	{
-		return 2;
+		return 2; //car on right
 	}
 	else
 	{
-		return 0;
+		return 0; //no cars
 	}
 }
 
@@ -327,12 +321,12 @@ int main() {
 						//find ref_v to use
 						for(int i = 0; i< sensor_fusion.size(); i++)
 						{
-							barrier_detect = detect_barrier(sensor_fusion, lane, car_s);
 							//Get d of the ith car
 							float d = sensor_fusion[i][6];
 							
 							//If there is a car directly in front of us 
 							if(d < (2+4*lane+2) && d> (2+4*lane-2)) // if d < 4 + 4 * lane and 
+							//if(d < (car_d + 2) && d > (car_d - 2)) // if d < 4 + 4 * lane and 
 							{
 								double vx = sensor_fusion[i][3];
 								double vy = sensor_fusion[i][4];
@@ -341,24 +335,20 @@ int main() {
 								
 								//if using previous point can project s value out
 								check_car_s+=((double)prev_size*0.02*check_speed); //Number of points * d = v * t, t = num_points * dt
-								
+						
 								//check s values greater than mine and s gap
-								if((check_car_s > car_s) && ((check_car_s-car_s) < 40) )
+								if((check_car_s > car_s) && ((check_car_s-car_s) < 30) )
 								{
 									//Do some logic here, lower reference veloocity so we dont crash into the car in front of us, could
 									//also flag to try to change lanes.
 									//ref_vel = 29.5//mph
 									too_close = true;
-									
-									//std::cout << "Debug too close" << std::endl;
-									//barrier_detect = detect_barrier(sensor_fusion, lane, car_s);
-									//std::cout << "Barrier detect: " << barrier_detect << std::endl;
-									std::cout << "Lane: " << lane << "Barrier detect: " << barrier_detect << std::endl;
+									barrier_detect = detect_barrier(sensor_fusion, lane, car_s,prev_size*0.02);
 									if(lane == 0) //if in the left lane
 									{
 										if(barrier_detect != 2) // if no barrier detected
 										{
-											lane += 1; //go to the middle lane
+										lane += 1; //go to the middle lane
 										}
 									}
 									else if(lane == 2) //if in the right lane
@@ -386,18 +376,23 @@ int main() {
 										}
 										else
 										{
-											lane = lane;  //do nothing
-										}
-										
+											lane = 1;  //do nothing
 									}
-									if(lane<0)
-									{
+								}
+								
+								if(lane<0)
+								{
 									lane = 0;
-									}
-									if(lane>2)
-									{
+								}
+								if(lane>2)
+								{
 									lane = 2;
-									}
+								}
+									//std::cout << "Debug too close" << std::endl;
+									//barrier_detect = detect_barrier(sensor_fusion, lane, car_s);
+									//std::cout << "Barrier detect: " << barrier_detect << std::endl;
+									//std::cout << "Lane: " << lane << "Barrier detect: " << barrier_detect << std::endl;
+									
 								}//end of "too close"
 							}//end of someone in front
 						}//end sensor fusion
@@ -405,6 +400,7 @@ int main() {
 						
 						if(too_close)
 						{
+								
 							ref_vel -= 0.224;
 						}
 						else if(ref_vel < 49.5)
