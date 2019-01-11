@@ -172,6 +172,9 @@ int detect_barrier(const vector<vector<double>> &sensor_fusion, int lane, double
 	double gap_front = 50;
 	double lane_center = 2+4*lane; 
 	double lane_buffer = 0.5;
+	int status = 3;
+	int count_left = 0;
+	int count_right = 0;
 	for (int i = 0; i < sensor_fusion.size(); i++)
 	{
 		double vx = sensor_fusion[i][3];
@@ -179,22 +182,28 @@ int detect_barrier(const vector<vector<double>> &sensor_fusion, int lane, double
 		double check_speed = sqrt(vx*vx+vy*vy); //magnituge of the velocity
 		double check_car_s = sensor_fusion[i][5]; //how far is it in front?
 		double check_car_d = sensor_fusion[i][6];
+		check_car_s+=((double)time_pred*check_speed);
 		
 		
 		if((check_car_d < (2+4*(lane-1)+2) ) && check_car_d > (2+4*(lane-1)-2)) //check the lane to the left
 		{
 			
-			//std::cout << "carid: " << sensor_fusion[i][0] << "ccs: " << check_car_s-car_s << std::endl;
+			
 			if((check_car_s < (car_s + gap_front)) && (check_car_s > (car_s - gap_rear)))
 			{
+				//std::cout << "carid Left: " << sensor_fusion[i][0] << " ccs: " << check_car_s - car_s << std::endl;
 				detect_left = true;
+				count_left+=1;
 			}
 		}
+		
 		if((check_car_d < (2+4*(lane+1)+2) ) && check_car_d > (2+4*(lane+1)-2))  //check the lane to the right
 		{
 			if((check_car_s < (car_s + gap_front)) && (check_car_s > (car_s - gap_rear)))
 			{
+				//std::cout << "carid Right: " << sensor_fusion[i][0] << " ccs: " << check_car_s - car_s << std::endl;
 				detect_right = true;
+				count_right+=1;
 			}
 		}
 	}
@@ -202,23 +211,24 @@ int detect_barrier(const vector<vector<double>> &sensor_fusion, int lane, double
 	if(lane == 0) detect_left  = true;
 	if(lane == 2) detect_right = true;
 	
-	//std::cout << "Left detect: " << detect_left << " Right detect: " << detect_right << " Gap left: " <<  gap_left << " Gap Right: " << gap_right << std::endl;
+	//std::cout << "Left detect: " << count_left << " Right detect: " << count_right << std::endl;
 	if (detect_left && detect_right)
 	{
-		return 3;  //cars on both sides
+		status = 3;  //cars on both sides
 	}
 	else if (detect_left  && !detect_right)
 	{
-		return 1; //car on left 
+		status = 1; //car on left 
 	}
 	else if (!detect_left  && detect_right)
 	{
-		return 2; //car on right
+		status = 2; //car on right
 	}
 	else
 	{
-		return 0; //no cars
+		status = 0; //no cars
 	}
+	return status;
 }
 
 int main() {
@@ -344,54 +354,54 @@ int main() {
 									//ref_vel = 29.5//mph
 									too_close = true;
 									barrier_detect = detect_barrier(sensor_fusion, lane, car_s,prev_size*0.02);
-									if(lane == 0) //if in the left lane
-									{
-										if(barrier_detect != 2) // if no barrier detected
-										{
-										lane += 1; //go to the middle lane
-										}
-									}
-									else if(lane == 2) //if in the right lane
-									{
-										if(barrier_detect != 1) // if no barrier detected
-										{
-											lane -= 1; //go to the middle lane
-										}
-									}
-									else // we are in the middle lane
-									{
-										if(barrier_detect == 1) //if we have someone on the left
-										{
-											lane += 1; // move right
-										}
-										else if(barrier_detect == 2) // if we have someone on the right
-										{
-											lane -= 1; // move left
-										}
-										else if(barrier_detect == 0) // nothing detected on either side
-										{
-											//add cost function here to decide
-											//move left for now
-											lane -= 1;
-										}
-										else
-										{
-											lane = 1;  //do nothing
-									}
-								}
+								// 	if(lane == 0) //if in the left lane
+								// 	{
+								// 		if(barrier_detect != 2) // if no barrier detected
+								// 		{
+								// 		lane += 1; //go to the middle lane
+								// 		}
+								// 	}
+								// 	else if(lane == 2) //if in the right lane
+								// 	{
+								// 		if(barrier_detect != 1) // if no barrier detected
+								// 		{
+								// 			lane -= 1; //go to the middle lane
+								// 		}
+								// 	}
+								// 	else // we are in the middle lane
+								// 	{
+								// 		if(barrier_detect == 1) //if we have someone on the left
+								// 		{
+								// 			lane += 1; // move right
+								// 		}
+								// 		else if(barrier_detect == 2) // if we have someone on the right
+								// 		{
+								// 			lane -= 1; // move left
+								// 		}
+								// 		else if(barrier_detect == 0) // nothing detected on either side
+								// 		{
+								// 			//add cost function here to decide
+								// 			//move left for now
+								// 			lane -= 1;
+								// 		}
+								// 		else
+								// 		{
+								// 			lane = 1;  //do nothing
+								// 	}
+								// }
 								
-								if(lane<0)
-								{
-									lane = 0;
-								}
-								if(lane>2)
-								{
-									lane = 2;
-								}
-									//std::cout << "Debug too close" << std::endl;
-									//barrier_detect = detect_barrier(sensor_fusion, lane, car_s);
-									//std::cout << "Barrier detect: " << barrier_detect << std::endl;
-									//std::cout << "Lane: " << lane << "Barrier detect: " << barrier_detect << std::endl;
+								// if(lane<0)
+								// {
+								// 	lane = 0;
+								// }
+								// if(lane>2)
+								// {
+								// 	lane = 2;
+								// }
+								// 	//std::cout << "Debug too close" << std::endl;
+								// 	//barrier_detect = detect_barrier(sensor_fusion, lane, car_s);
+								// 	//std::cout << "Barrier detect: " << barrier_detect << std::endl;
+								// 	//std::cout << "Lane: " << lane << "Barrier detect: " << barrier_detect << std::endl;
 									
 								}//end of "too close"
 							}//end of someone in front
