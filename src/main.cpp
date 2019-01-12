@@ -168,13 +168,10 @@ int detect_barrier(const vector<vector<double>> &sensor_fusion, int lane, double
 {
 	bool detect_left = false;
 	bool detect_right = false;
-	double gap_rear = 30;
-	double gap_front = 50;
-	double lane_center = 2+4*lane; 
-	double lane_buffer = 0.5;
+	double gap_rear = 20;//25
+	double gap_front = 30;//35
 	int status = 3;
-	int count_left = 0;
-	int count_right = 0;
+
 	for (int i = 0; i < sensor_fusion.size(); i++)
 	{
 		double vx = sensor_fusion[i][3];
@@ -182,36 +179,34 @@ int detect_barrier(const vector<vector<double>> &sensor_fusion, int lane, double
 		double check_speed = sqrt(vx*vx+vy*vy); //magnituge of the velocity
 		double check_car_s = sensor_fusion[i][5]; //how far is it in front?
 		double check_car_d = sensor_fusion[i][6];
+		
+		//account for where the ith car will be in the future, same method as for checking 'too close'
 		check_car_s+=((double)time_pred*check_speed);
 		
-		
-		if((check_car_d < (2+4*(lane-1)+2) ) && check_car_d > (2+4*(lane-1)-2)) //check the lane to the left
-		{
-			
-			
+		//check the lane to the left. loop thru all the vehicles detected 
+		if((check_car_d < (2+4*(lane-1)+2) ) && check_car_d > (2+4*(lane-1)-2)) 
+		{			
 			if((check_car_s < (car_s + gap_front)) && (check_car_s > (car_s - gap_rear)))
 			{
-				//std::cout << "carid Left: " << sensor_fusion[i][0] << " ccs: " << check_car_s - car_s << std::endl;
-				detect_left = true;
-				count_left+=1;
+				detect_left = true;  // if at least one vehicle is detected this will be true
 			}
 		}
 		
-		if((check_car_d < (2+4*(lane+1)+2) ) && check_car_d > (2+4*(lane+1)-2))  //check the lane to the right
+		//check the lane to the right
+		if((check_car_d < (2+4*(lane+1)+2) ) && check_car_d > (2+4*(lane+1)-2))  
 		{
 			if((check_car_s < (car_s + gap_front)) && (check_car_s > (car_s - gap_rear)))
 			{
-				//std::cout << "carid Right: " << sensor_fusion[i][0] << " ccs: " << check_car_s - car_s << std::endl;
 				detect_right = true;
-				count_right+=1;
 			}
 		}
 	}
 
+	//take care of the left and right lanes
 	if(lane == 0) detect_left  = true;
 	if(lane == 2) detect_right = true;
 	
-	//std::cout << "Left detect: " << count_left << " Right detect: " << count_right << std::endl;
+	//set the status of the vehicle (where vehicles are detected)
 	if (detect_left && detect_right)
 	{
 		status = 3;  //cars on both sides
@@ -226,7 +221,7 @@ int detect_barrier(const vector<vector<double>> &sensor_fusion, int lane, double
 	}
 	else
 	{
-		status = 0; //no cars
+		status = 0; //no cars on either side
 	}
 	return status;
 }
@@ -271,14 +266,13 @@ int main() {
 	//start in lane 1
 	int lane = 1;
 	int barrier_detect = 0;
+	int barrier_counter = 0;
 
 	// have a reference velocity to target
 	//double ref_vel = 49.5; //mph
 	double ref_vel = 0.0; //mph
 
-  /*h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
-                     uWS::OpCode opCode) */
-	h.onMessage([&ref_vel, &map_waypoints_x, &map_waypoints_y, &map_waypoints_s, &map_waypoints_dx, &map_waypoints_dy, &lane, &barrier_detect](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  	h.onMessage([&ref_vel, &map_waypoints_x, &map_waypoints_y, &map_waypoints_s, &map_waypoints_dx, &map_waypoints_dy, &lane, &barrier_detect, &barrier_counter](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode){
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -316,11 +310,11 @@ int main() {
           	double end_path_d = j[1]["end_path_d"];
 
           	// Sensor Fusion Data, a list of all other cars on the same side of the road.
+			// Using the code from the video walkthru:
           	vector<vector<double>> sensor_fusion = j[1]["sensor_fusion"];
 
 						int prev_size = previous_path_x.size();
 
-						// 24:25
 						if(prev_size > 0)
 						{	
 							car_s = end_path_s;
@@ -335,8 +329,7 @@ int main() {
 							float d = sensor_fusion[i][6];
 							
 							//If there is a car directly in front of us 
-							if(d < (2+4*lane+2) && d> (2+4*lane-2)) // if d < 4 + 4 * lane and 
-							//if(d < (car_d + 2) && d > (car_d - 2)) // if d < 4 + 4 * lane and 
+							if(d < (2+4*lane+2) && d> (2+4*lane-2)) 
 							{
 								double vx = sensor_fusion[i][3];
 								double vy = sensor_fusion[i][4];
@@ -349,68 +342,63 @@ int main() {
 								//check s values greater than mine and s gap
 								if((check_car_s > car_s) && ((check_car_s-car_s) < 30) )
 								{
-									//Do some logic here, lower reference veloocity so we dont crash into the car in front of us, could
-									//also flag to try to change lanes.
-									//ref_vel = 29.5//mph
 									too_close = true;
+									//add vehicle detection here
 									barrier_detect = detect_barrier(sensor_fusion, lane, car_s,prev_size*0.02);
-								// 	if(lane == 0) //if in the left lane
-								// 	{
-								// 		if(barrier_detect != 2) // if no barrier detected
-								// 		{
-								// 		lane += 1; //go to the middle lane
-								// 		}
-								// 	}
-								// 	else if(lane == 2) //if in the right lane
-								// 	{
-								// 		if(barrier_detect != 1) // if no barrier detected
-								// 		{
-								// 			lane -= 1; //go to the middle lane
-								// 		}
-								// 	}
-								// 	else // we are in the middle lane
-								// 	{
-								// 		if(barrier_detect == 1) //if we have someone on the left
-								// 		{
-								// 			lane += 1; // move right
-								// 		}
-								// 		else if(barrier_detect == 2) // if we have someone on the right
-								// 		{
-								// 			lane -= 1; // move left
-								// 		}
-								// 		else if(barrier_detect == 0) // nothing detected on either side
-								// 		{
-								// 			//add cost function here to decide
-								// 			//move left for now
-								// 			lane -= 1;
-								// 		}
-								// 		else
-								// 		{
-								// 			lane = 1;  //do nothing
-								// 	}
-								// }
-								
-								// if(lane<0)
-								// {
-								// 	lane = 0;
-								// }
-								// if(lane>2)
-								// {
-								// 	lane = 2;
-								// }
-								// 	//std::cout << "Debug too close" << std::endl;
-								// 	//barrier_detect = detect_barrier(sensor_fusion, lane, car_s);
-								// 	//std::cout << "Barrier detect: " << barrier_detect << std::endl;
-								// 	//std::cout << "Lane: " << lane << "Barrier detect: " << barrier_detect << std::endl;
 									
+									//add a timer to make sure that cars are sensed for a long enough period before changing lanes
+									if(barrier_detect !=3)
+									{
+										barrier_counter+=1;
+									}
+
+									//use the timer here to prevent early lane change
+									if(barrier_counter > 10)
+									{
+										if(lane == 0) //if in the left lane
+										{
+											if(barrier_detect != 2) // if no barrier detected
+											{
+												lane += 1; //go to the middle lane
+											}
+										}
+										else if(lane == 2) //if in the right lane
+										{
+											if(barrier_detect != 1) // if no barrier detected
+											{
+												lane -= 1; //go to the middle lane
+											}
+										}
+										else // we are in the middle lane
+										{
+											if(barrier_detect == 1) //if we have someone on the left
+											{
+												lane += 1; // move right
+											}
+											else if(barrier_detect == 2) // if we have someone on the right
+											{
+												lane -= 1; // move left
+											}
+											else if(barrier_detect == 0) // nothing detected on either side
+											{
+												//pass on the left for now
+												lane -= 1;
+											}
+											else //barrier_detect == 3 or any other value, don't change lanes
+											{
+												lane = 1;  //do nothing
+											}	
+										}
+										//reset barrier counter once we've decided the lane change
+										barrier_counter = 0;
+									}
 								}//end of "too close"
 							}//end of someone in front
 						}//end sensor fusion
-						//25:26
-						
+												
+						//simple way of slowing down from video
 						if(too_close)
 						{
-								
 							ref_vel -= 0.224;
 						}
 						else if(ref_vel < 49.5)
@@ -419,6 +407,7 @@ int main() {
 						}
 						
 
+						//From here down, also from the video
 						//Create a list of widely spaced (x,y) waypoints, evenly spaced at 30m
 						//later we will interpolate tehse waypoints with a aspline and fill it in with more points that control
 						
@@ -426,7 +415,7 @@ int main() {
 						vector<double> ptsy;
 
 						//reference x, y, yaw states
-						//either wew will referenc ethe starting point as where the car is or at the previous paths and point
+						//either wew will reference the starting point as where the car is or at the previous paths and point
 						double ref_x = car_x;
 						double ref_y = car_y;
 						double ref_yaw = deg2rad(car_yaw);
@@ -434,7 +423,7 @@ int main() {
 						// if previous size is almost empty , use the car as starign reference
 						if(prev_size < 2)
 						{
-							//use two points taht make the path tangent to the car
+							//use two points that make the path tangent to the car
 							double prev_car_x = car_x - cos(car_yaw);
 							double prev_car_y = car_y - sin(car_yaw);
 
@@ -534,32 +523,11 @@ int main() {
 
 							next_x_vals.push_back(x_point);
 							next_y_vals.push_back(y_point);
-						}
-
-          	
-          	
-						// old way
-						/*
-						vector<double> next_x_vals;
-          	vector<double> next_y_vals;
-
-						double dist_inc = 0.3;
-    				for(int i = 0; i < 50; i++)
-    				{
-							double next_s = car_s + (i+1) * dist_inc;
-							double next_d = 6.0;
-							vector<double> xy = getXY(next_s,next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
-          		next_x_vals.push_back(xy[0]);
-          		next_y_vals.push_back(xy[1]);
-    				}
-						*/	
-						//end old way
-						
-						 
+						} 
 
           	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
           	json msgJson;
-						msgJson["next_x"] = next_x_vals;
+			msgJson["next_x"] = next_x_vals;
           	msgJson["next_y"] = next_y_vals;
 
           	auto msg = "42[\"control\","+ msgJson.dump()+"]";
