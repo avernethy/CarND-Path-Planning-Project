@@ -437,7 +437,7 @@ int main() {
 						else
 						{
 
-							//Redefine reference state as previous path and piont
+							//Redefine reference state as previous path and point
 							ref_x = previous_path_x[prev_size - 1];
 							ref_y = previous_path_y[prev_size - 1];
 
@@ -502,7 +502,7 @@ int main() {
 
 						double x_add_on = 0;
 
-						// Fill up hte rest of our path planner after fillin it with previous points, here we will always output 50 points
+						// Fill up the rest of our path planner after filling it with previous points, here we will always output 50 points
 						for (int i = 1; i <= 50-previous_path_x.size(); i++) 
 						{
 							double N = (target_dist/(0.02 * ref_vel / 2.24));
